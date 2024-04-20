@@ -1,0 +1,8 @@
+{
+  "ftpd_banner": "welcom to ftpd",
+  "port": 10086,
+  "max_idle_timeout": 60,
+  "data_connection_timeout": 1,
+  "use_local_time": true,
+  "write_enable": true
+}
