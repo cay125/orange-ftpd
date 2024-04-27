@@ -33,4 +33,16 @@ void Config::init(std::string path) {
   set_field(port);
 }
 
+void Config::inc_client_num() {
+  client_num_++;
+}
+
+void Config::dec_client_num() {
+  client_num_--;
+}
+
+int Config::client_num() {
+  return client_num_;
+}
+
 }

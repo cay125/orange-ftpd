@@ -1,4 +1,5 @@
 #include "server.h"
+#include "config/config.h"
 #include "session/session.h"
 #include <asio/ip/tcp.hpp>
 #include <cstdint>
@@ -27,6 +28,7 @@ void Server::start() {
 void Server::do_accept() {
   acceptor_.async_accept([this](const std::error_code& ec, asio::ip::tcp::socket socket){
     if (!ec) {
+      Config::instance()->inc_client_num();
       auto session = std::make_shared<Session>(io_context_, std::move(socket));
       session->start();
     } else {

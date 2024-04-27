@@ -1,4 +1,4 @@
-#include "op/ack.h"
+#include "op/ack_op.h"
 #include "op/auth_op.h"
 #include "op/basic_op.h"
 #include "op/change_working_dir_op.h"
@@ -9,6 +9,7 @@
 #include "op/property_op.h"
 #include "op/recv_file_op.h"
 #include "op/send_file_op.h"
+#include "op/stat_op.h"
 #include "op/syst_op.h"
 #include "utils/regist_operation.h"
 #include <spdlog/spdlog.h>
@@ -22,6 +23,7 @@ void regist_all_operation() {
   REGISTER_FTPD_OP(CreateDirOp, XMKD);
   REGISTER_FTPD_OP(SendFileOp, RETR);
   REGISTER_FTPD_OP(RecvFileOp, STOR);
+  REGISTER_FTPD_OP(StatOp, STAT);
   REGISTER_FTPD_OP(SystOp, SYST);
   REGISTER_FTPD_OP(PrintWorkingDirOp, PWD);
   REGISTER_FTPD_OP(PrintWorkingDirOp, XPWD);

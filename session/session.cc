@@ -36,6 +36,10 @@ Session::Session(asio::io_context* io_context, asio::ip::tcp::socket socket) :
   context_->set_acceptor(io_context);
 }
 
+Session::~Session() {
+  Config::instance()->dec_client_num();
+}
+
 void Session::start() {
   auto self = shared_from_this();
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 
@@ -22,6 +23,10 @@ class Config {
 
   static Config* instance();
 
+  void inc_client_num();
+  void dec_client_num();
+  int client_num();
+
   field_ro_guard(ftpd_banner, std::string, "");
   field_ro_guard(data_connection_timeout, int, 10);
   field_ro_guard(max_idle_timeout, int, 20);
@@ -33,6 +38,7 @@ class Config {
 
  private:
   Config() {}
+  std::atomic_int client_num_;
 };
 
 }

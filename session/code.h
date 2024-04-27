@@ -13,6 +13,7 @@ namespace orange {
 enum class ret_code {
   data_conn = 150,
   ok = 200,
+  stat_ok = 211,
   syst_ok = 215,
   welcome = 220,
   transfer_complete = 226,

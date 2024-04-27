@@ -12,6 +12,7 @@ namespace orange {
 class Session : public std::enable_shared_from_this<Session> {
  public:
   Session(asio::io_context* io_context, asio::ip::tcp::socket socket);
+  ~Session();
   void start();
   void close();
 
