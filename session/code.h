@@ -14,6 +14,7 @@ enum class ret_code {
   data_conn = 150,
   ok = 200,
   stat_ok = 211,
+  size_or_mdtm_ok = 213,
   syst_ok = 215,
   welcome = 220,
   transfer_complete = 226,

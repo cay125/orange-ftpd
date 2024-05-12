@@ -9,6 +9,7 @@
 #include "op/property_op.h"
 #include "op/recv_file_op.h"
 #include "op/send_file_op.h"
+#include "op/size_op.h"
 #include "op/stat_op.h"
 #include "op/syst_op.h"
 #include "utils/regist_operation.h"
@@ -33,6 +34,7 @@ void regist_all_operation() {
   REGISTER_FTPD_OP(PropertyOp, TYPE);
   REGISTER_FTPD_OP(PassiveModeOp, PASV);
   REGISTER_FTPD_OP(ListOp, LIST);
+  REGISTER_FTPD_OP(SizeOp, SIZE);
 
   auto& op_map = PluginRegistry<orange::BasicOp, orange::SessionContext*>::getFinalFactoryMap();
   spdlog::info("Total registed ops: {}", op_map.size());
