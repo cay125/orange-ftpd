@@ -2,8 +2,6 @@
 #include "op/basic_op.h"
 #include "session/code.h"
 #include "session/context.h"
-#include <asio/detached.hpp>
-#include <asio/write.hpp>
 
 namespace orange {
 
@@ -17,7 +15,7 @@ PrintWorkingDirOp::~PrintWorkingDirOp() {
 }
 
 void PrintWorkingDirOp::do_operation() {
-  asio::async_write(*context_->control_socket(), Response::get_pwd_response(&context_->current_path()), asio::detached); 
+  write_message(Response::get_pwd_response(&context_->current_path()));
 }
 
 std::string PrintWorkingDirOp::name() {

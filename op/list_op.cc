@@ -4,10 +4,6 @@
 #include "session/code.h"
 #include "session/context.h"
 #include <array>
-#include <asio/deferred.hpp>
-#include <asio/detached.hpp>
-#include <asio/experimental/cancellation_condition.hpp>
-#include <asio/experimental/parallel_group.hpp>
 #include <asio/write.hpp>
 #include <cstddef>
 #include <spdlog/spdlog.h>
@@ -96,36 +92,18 @@ static SharedConstBuffer list_file(const fs::path& path) {
 void ListOp::handle_data_connection() {
   SharedConstBuffer response = list_file(context_->current_path());
   auto self = shared_from_base<ListOp>();
-  asio::experimental::make_parallel_group(
-    asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::data_conn), asio::deferred),
-    asio::async_write(*context_->data_socket(), response, asio::deferred)
-  ).async_wait(asio::experimental::wait_for_all(),
-  [self](
-    std::array<std::size_t, 2> completion_order,
-    std::error_code ec1, size_t n1,
-    std::error_code ec2, size_t n2){
-    asio::async_write(*self->context_->control_socket(), Response::get_code_string(ret_code::transfer_complete), asio::detached);
-    self->context_->clear_data_socket();
+  write_message(Response::get_code_string(ret_code::data_conn), [self, response](){
+    asio::async_write(*self->context_->data_socket(), response, [self](std::error_code ec, size_t n){
+      self->write_message(Response::get_code_string(ret_code::transfer_complete));
+      self->context_->clear_data_socket();
+    });
   });
 }
 
 void ListOp::do_operation() {
-  if (!check_data_port()) {
-    return;
-  }
   auto self = shared_from_base<ListOp>();
-  context_->acceptor()->async_accept([self](const std::error_code& ec, asio::ip::tcp::socket socket){
-    if (ec == asio::error::operation_aborted) {
-      spdlog::info("acceptor closed");
-      return;
-    }
-    self->context_->acceptor()->close();
-    if (!ec) {
-      socket.non_blocking(true);
-      socket.native_non_blocking(true);
-      self->context_->set_data_socket(std::move(socket));
-      self->handle_data_connection();
-    }
+  fetch_passive_connection<ListOp>([self](){
+    self->handle_data_connection();
   });
 }
 

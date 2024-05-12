@@ -2,8 +2,6 @@
 #include "op/basic_op.h"
 #include "session/code.h"
 #include "session/context.h"
-#include <asio/detached.hpp>
-#include <asio/write.hpp>
 #include <spdlog/spdlog.h>
 
 namespace orange {
@@ -31,7 +29,7 @@ void PassiveModeOp::do_operation() {
   auto response = Response::get_pasv_response(
       context_->control_socket()->local_endpoint().address().to_string(),
       acceptor.local_endpoint().port());
-  asio::async_write(*context_->control_socket(), response, asio::detached);
+  write_message(response);
 }
 
 std::string PassiveModeOp::name() {

@@ -2,8 +2,6 @@
 #include "config/config.h"
 #include "session/code.h"
 #include "session/context.h"
-#include <asio/detached.hpp>
-#include <asio/write.hpp>
 #include <sstream>
 #include <string>
 
@@ -39,7 +37,7 @@ void StatOp::do_operation() {
      << "  Total client connected num is " << Config::instance()->client_num() << "\n"
      << ret_code << " End of status\r\n";
   SharedConstBuffer buffer(ss.str());
-  asio::async_write(*context_->control_socket(), buffer, asio::detached);
+  write_message(buffer);
 }
 
 std::string StatOp::name() {

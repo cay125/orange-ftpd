@@ -1,7 +1,5 @@
 #include "op/basic_op.h"
 #include "session/code.h"
-#include <asio/detached.hpp>
-#include <asio/write.hpp>
 
 namespace orange {
 
@@ -26,8 +24,12 @@ bool BasicOp::check_data_port() {
     return true;
   }
   spdlog::info("Data connection port is not opened");
-  asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::invalid_seq), asio::detached);
+  context_->write_message(Response::get_code_string(ret_code::invalid_seq));
   return false;
+}
+
+void BasicOp::write_message(SharedConstBuffer buffer, std::function<void(void)> token) {
+  context_->write_message(buffer, token);
 }
 
 }

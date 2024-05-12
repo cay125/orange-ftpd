@@ -3,14 +3,8 @@
 #include "session/code.h"
 #include "session/context.h"
 #include <algorithm>
-#include <asio/detached.hpp>
 #include <asio/error.hpp>
-#include <asio/error_code.hpp>
-#include <asio/io_context.hpp>
 #include <asio/ip/tcp.hpp>
-#include <asio/posix/stream_descriptor.hpp>
-#include <asio/read.hpp>
-#include <asio/write.hpp>
 #include <cerrno>
 #include <cstddef>
 #include <fcntl.h>
@@ -28,29 +22,26 @@ RecvFileOp::RecvFileOp(SessionContext* context) :
   fd_(0),
   pipe_fd_{0} {
   if (context->request().body.empty()) {
-    asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::upload_fail, "Could not create file."), asio::detached);
+    write_message(Response::get_code_string(ret_code::upload_fail, "Could not create file."));
     return;
   }
-  fs::path target_path = fs::path(context->request().body);
-  if (!target_path.is_absolute()) {
-    target_path = context_->current_path() / target_path;
-  }
+  fs::path target_path = context_->get_target_path(context->request().body);
   // for anonymous user, disable overwrite
   if (context->is_anonymous() && fs::exists(target_path)) {
     spdlog::warn("Anonymous user Cannot overwrite exist file");
-    asio::async_write(*context->control_socket(), Response::get_code_string(ret_code::upload_fail, "Could not create file."), asio::detached);
+    write_message(Response::get_code_string(ret_code::upload_fail, "Could not create file."));
     return;
   }
   file_name_ = target_path.string();
   fd_ = ::open(file_name_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
   if (fd_ < 0) {
     spdlog::critical("Open file failed: {}, error: {}", file_name_, asio::error_code(errno, asio::error::get_system_category()).message());
-    asio::async_write(*context->control_socket(), Response::get_code_string(ret_code::upload_fail, "Could not create file."), asio::detached);
+    write_message(Response::get_code_string(ret_code::upload_fail, "Could not create file."));
     return;
   }
   if (::pipe(pipe_fd_) < 0) {
     spdlog::critical("Create pipe failed, error: {}", asio::error_code(errno, asio::error::get_system_category()).message());
-    asio::async_write(*context->control_socket(), Response::get_code_string(ret_code::upload_fail, "Could not create file."), asio::detached);
+    write_message(Response::get_code_string(ret_code::upload_fail, "Could not create file."));
     return;
   }
 }
@@ -74,28 +65,15 @@ void RecvFileOp::do_operation() {
   if (fd_ <= 0) {
     return;
   }
-  if (!check_data_port()) {
-    return;
-  }
   auto self = shared_from_base<RecvFileOp>();
   set_completion_token([this](){
-    asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::transfer_complete), asio::detached);
+    write_message(Response::get_code_string(ret_code::transfer_complete));
     context_->clear_data_socket();
   });
-  context_->acceptor()->async_accept([self](std::error_code ec, asio::ip::tcp::socket socket){
-    if (ec == asio::error::operation_aborted) {
-      spdlog::info("acceptor closed, port: {}", self->context_->acceptor()->local_endpoint().port());
-      return;
-    }
-    self->context_->acceptor()->close();
-    if (!ec) {
-      socket.non_blocking(true);
-      socket.native_non_blocking(true);
-      self->context_->set_data_socket(std::move(socket));
-      asio::async_write(*self->context_->control_socket(), Response::get_code_string(ret_code::data_conn), [self](std::error_code ec, size_t n){
-        self->do_recv_file();
-      });
-    }
+  fetch_passive_connection<RecvFileOp>([self](){
+    self->write_message(Response::get_code_string(ret_code::data_conn), [self](){
+      self->do_recv_file();
+    });
   });
 }
 

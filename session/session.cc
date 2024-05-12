@@ -10,7 +10,6 @@
 #include "utils/regist_factory.h"
 #include <algorithm>
 #include <asio/buffers_iterator.hpp>
-#include <asio/detached.hpp>
 #include <asio/error.hpp>
 #include <asio/error_code.hpp>
 #include <asio/io_context.hpp>
@@ -29,7 +28,6 @@ static std::array<std::string, 12> month_mapping = {
 
 Session::Session(asio::io_context* io_context, asio::ip::tcp::socket socket) :
   io_context_(io_context),
-  acceptor_(*io_context),
   check_idle_timer_(*io_context),
   context_(std::make_unique<SessionContext>()) {
   context_->set_control_socket(std::move(socket));
@@ -102,9 +100,6 @@ void Session::close() {
   std::error_code ignored_err;
   context_->control_socket()->close(ignored_err);
   check_idle_timer_.cancel();
-  if (acceptor_.is_open()) {
-    acceptor_.close();
-  }
 }
 
 static bool build_request(const std::vector<std::string> input, FtpRequest* request) {
@@ -155,16 +150,16 @@ void Session::dispatch_task() {
     return;
   }
   if (request.command == "USER") {
-    asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::not_allowed, "Can't change to another user."), asio::detached);
+    context_->write_message(Response::get_code_string(ret_code::not_allowed, "Can't change to another user."));
     return;
   }
   if (request.command == "PASS") {
-    asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::logged_on, "Already logged in."), asio::detached);
+    context_->write_message(Response::get_code_string(ret_code::logged_on, "Already logged in."));
     return;
   }
   auto op = PluginRegistry<BasicOp, SessionContext*>::create(request.command, context_.get());
   if (!op) {
-    asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::syntax_error), asio::detached);
+    context_->write_message(Response::get_code_string(ret_code::syntax_error));
     return;
   }
   op->do_operation();

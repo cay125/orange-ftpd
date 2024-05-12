@@ -3,8 +3,6 @@
 #include "op/basic_op.h"
 #include "session/code.h"
 #include "session/ftp_request.h"
-#include <asio/detached.hpp>
-#include <asio/write.hpp>
 #include <filesystem>
 #include <spdlog/spdlog.h>
 
@@ -25,27 +23,24 @@ std::string CreateDirOp::name() {
 
 void CreateDirOp::do_operation() {
   if (!Config::instance()->get_write_enable()) {
-    asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::noperm_filefatal, "Permission denied."), asio::detached);
+    write_message(Response::get_code_string(ret_code::noperm_filefatal, "Permission denied."));
     return;
   }
   const FtpRequest& request = context_->request();
   if (request.body.empty()) {
-    asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::noperm_filefatal, "Create directory operation failed."), asio::detached);
+    write_message(Response::get_code_string(ret_code::noperm_filefatal, "Create directory operation failed."));
     return;
   }
-  fs::path target_path = fs::path(request.body);
-  if (!target_path.is_absolute()) {
-    target_path = context_->current_path() / target_path;
-  }
+  fs::path target_path = context_->get_target_path(request.body);
   if (fs::exists(target_path)) {
-    asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::noperm_filefatal, "Create directory operation failed."), asio::detached);
+    write_message(Response::get_code_string(ret_code::noperm_filefatal, "Create directory operation failed."));
     return;
   }
   fs::create_directory(target_path);
   if (fs::exists(target_path) && fs::is_directory(target_path)) {
-    asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::pwd_or_mkdir_ok,"\"" + fs::canonical(target_path).string()  + std::string("\" created.")), asio::detached);
+    write_message(Response::get_code_string(ret_code::pwd_or_mkdir_ok,"\"" + fs::canonical(target_path).string()  + std::string("\" created.")));
   } else {
-    asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::noperm_filefatal, "Create directory operation failed."), asio::detached);
+    write_message(Response::get_code_string(ret_code::noperm_filefatal, "Create directory operation failed."));
   }
 }
 

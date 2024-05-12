@@ -2,10 +2,8 @@
 #include "op/basic_op.h"
 #include "session/code.h"
 #include "session/context.h"
-#include <asio/detached.hpp>
 #include <asio/error.hpp>
 #include <asio/ip/tcp.hpp>
-#include <asio/write.hpp>
 #include <cstddef>
 #include <fcntl.h>
 #include <filesystem>
@@ -24,15 +22,12 @@ SendFileOp::SendFileOp(SessionContext* context) :
   file_size_(0),
   file_offset_(0) {
   if (context->request().body.empty()) {
-    asio::async_write(*context->control_socket(), Response::get_code_string(ret_code::noperm_filefatal, "File not found"), asio::detached);
+    write_message(Response::get_code_string(ret_code::noperm_filefatal, "File not found"));
     return;
   }
-  fs::path target_path = fs::path(context->request().body);
-  if (!target_path.is_absolute()) {
-    target_path = context_->current_path() / target_path;
-  }
+  fs::path target_path = context_->get_target_path(context->request().body);
   if (!fs::exists(target_path)) {
-    asio::async_write(*context->control_socket(), Response::get_code_string(ret_code::noperm_filefatal, "File not found"), asio::detached);
+    write_message(Response::get_code_string(ret_code::noperm_filefatal, "File not found"));
     return;
   }
   file_name_ = target_path.string();
@@ -40,7 +35,7 @@ SendFileOp::SendFileOp(SessionContext* context) :
   fd_ = ::open(file_name_.c_str(), O_RDONLY);
   if (fd_ < 0) {
     spdlog::critical("Open file failed: {}, error: {}", file_name_, asio::error_code(errno, asio::error::get_system_category()).message());
-    asio::async_write(*context->control_socket(), Response::get_code_string(ret_code::noperm_filefatal, "Failed to open file."), asio::detached);
+    write_message(Response::get_code_string(ret_code::noperm_filefatal, "Failed to open file."));
     return;
   }
 }
@@ -60,28 +55,15 @@ void SendFileOp::do_operation() {
   if (fd_ <= 0) {
     return;
   }
-  if (!check_data_port()) {
-    return;
-  }
   auto self = shared_from_base<SendFileOp>();
   set_completion_token([this](){
-    asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::transfer_complete), asio::detached);
+    write_message(Response::get_code_string(ret_code::transfer_complete));
     context_->clear_data_socket();
   });
-  context_->acceptor()->async_accept([self](const std::error_code& ec, asio::ip::tcp::socket socket){
-    if (ec == asio::error::operation_aborted) {
-      spdlog::info("acceptor closed, port: {}", self->context_->acceptor()->local_endpoint().port());
-      return;
-    }
-    self->context_->acceptor()->close();
-    if (!ec) {
-      socket.non_blocking(true);
-      socket.native_non_blocking(true);
-      self->context_->set_data_socket(std::move(socket));
-      asio::async_write(*self->context_->control_socket(), Response::get_code_string(ret_code::data_conn), [self](std::error_code ec, size_t n){
-        self->do_send_file();
-      });
-    }
+  fetch_passive_connection<SendFileOp>([self](){
+    self->write_message(Response::get_code_string(ret_code::data_conn), [self](){
+      self->do_send_file();
+    });
   });
 }
 

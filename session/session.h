@@ -23,7 +23,6 @@ class Session : public std::enable_shared_from_this<Session> {
   void dispatch_task();
 
   asio::io_context* io_context_;
-  asio::ip::tcp::acceptor acceptor_;
   asio::streambuf buf;
   const char* delimit = "\r\n";
   asio::steady_timer check_idle_timer_;

@@ -1,10 +1,13 @@
 #pragma once
 
+#include "session/code.h"
 #include "session/ftp_request.h"
 #include <algorithm>
 #include <asio/io_context.hpp>
 #include <asio/ip/tcp.hpp>
+#include <functional>
 #include <memory>
+#include <queue>
 #include <string>
 #include <filesystem>
 #include <type_traits>
@@ -38,6 +41,8 @@ enum class transport_type {
  private:                                                          \
   type name##_;
 
+using Message = std::pair<SharedConstBuffer, std::function<void(void)>>;
+
 class SessionContext {
  public:
   SessionContext();
@@ -56,6 +61,8 @@ class SessionContext {
     return acceptor_.get();
   }
 
+  fs::path get_target_path(const std::string& path);
+
   void clear_data_socket() {
     data_socket_->close();
     data_socket_.reset();
@@ -73,6 +80,8 @@ class SessionContext {
     acceptor_ = std::make_unique<asio::ip::tcp::acceptor>(*io_context);
   }
 
+  void write_message(SharedConstBuffer buffer, std::function<void(void)> toekn = nullptr);
+
   field_guard(current_path, fs::path);
   field_guard(verified, bool);
   field_guard(command, std::string);
@@ -82,8 +91,11 @@ class SessionContext {
   field_guard(request, FtpRequest);
   field_guard(is_anonymous, bool);
   field_guard(type, transport_type);
+  field_guard(message_queue, std::queue<Message>);
 
  private:
+  void do_write_message();
+
   std::unique_ptr<asio::ip::tcp::socket> data_socket_;
   std::unique_ptr<asio::ip::tcp::socket> control_socket_;
   std::unique_ptr<asio::ip::tcp::acceptor> acceptor_;
