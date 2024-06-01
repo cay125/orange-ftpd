@@ -3,6 +3,7 @@
 #include "session/code.h"
 #include "session/context.h"
 #include <spdlog/spdlog.h>
+#include <system_error>
 
 namespace orange {
 
@@ -21,9 +22,20 @@ void PassiveModeOp::do_operation() {
     acceptor.close();
   }
   asio::ip::tcp::endpoint endpoint(asio::ip::tcp::v4(), 0);
-  acceptor.open(endpoint.protocol());
+  std::error_code ec;
+  acceptor.open(endpoint.protocol(), ec);
+  if (ec) {
+    spdlog::error("Open acceptor failed: {}", ec.message());
+    write_message(Response::get_code_string(ret_code::noperm_filefatal, "Permission denied."));
+    return;
+  }
   acceptor.set_option(asio::ip::tcp::acceptor::reuse_address(true));
-  acceptor.bind(endpoint);
+  acceptor.bind(endpoint, ec);
+  if (ec) {
+    spdlog::error("Bind acceptor failed: {}", ec.message());
+    write_message(Response::get_code_string(ret_code::noperm_filefatal, "Permission denied."));
+    return;
+  }
   acceptor.listen();
   spdlog::info("Data connection port listened on: {}", acceptor.local_endpoint().port());
   auto response = Response::get_pasv_response(
