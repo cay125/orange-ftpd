@@ -48,6 +48,7 @@ class SessionContext {
   SessionContext();
   SessionContext(const SessionContext&) = delete;
   SessionContext& operator=(const SessionContext& context) = delete;
+  ~SessionContext();
 
   asio::ip::tcp::socket* data_socket() {
     return data_socket_.get();

@@ -14,6 +14,7 @@ message("-- system processor: ${CMAKE_SYSTEM_PROCESSOR}")
 add_compile_options(
   -Wall
   -Werror
+  $<$<COMPILE_LANGUAGE:CXX>:-std=c++20>
 )
 
 find_package(asio REQUIRED)
@@ -35,6 +36,7 @@ add_subdirectory(session)
 add_subdirectory(config)
 add_subdirectory(utils)
 add_subdirectory(op)
+add_subdirectory(client)
 
 add_executable(ftpd main.cc server.cc server.h)
 target_link_libraries(ftpd PRIVATE session utils config op ${third_party})

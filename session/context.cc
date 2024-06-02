@@ -14,6 +14,13 @@ SessionContext::SessionContext() :
   type_(transport_type::binary) {
 }
 
+SessionContext::~SessionContext() {
+  if (acceptor_->is_open()) {
+    spdlog::warn("Context destroy while acceptor opening");
+    acceptor_->close();
+  }
+}
+
 fs::path SessionContext::get_target_path(const std::string& path) {
   fs::path target_path = fs::path(path);
   if (!target_path.is_absolute()) {
@@ -38,6 +45,8 @@ void SessionContext::do_write_message() {
   asio::async_write(*control_socket(), buffer, [this](std::error_code ec, size_t n){
     if (ec) {
       spdlog::error("Error happen when writing message: {}", ec.message());
+      std::queue<Message> empty_queue;
+      mutable_message_queue()->swap(empty_queue);
       return;
     }
     if (message_queue().front().second) {

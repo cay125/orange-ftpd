@@ -39,6 +39,7 @@ Session::~Session() {
 }
 
 void Session::start() {
+  spdlog::info("Connection established, remote host: {}, port: {}", context_->control_socket()->remote_endpoint().address().to_string(), context_->control_socket()->remote_endpoint().port());
   auto self = shared_from_this();
 
   const std::string default_banner = "Welcome to ftpd.";
@@ -81,7 +82,7 @@ void Session::do_read() {
       if (ec) {
         if (ec == asio::error::eof) {
           spdlog::info("Connection close by remote, ip: {}, port: {}",
-            context_->control_socket()->local_endpoint().address().to_string(), context_->control_socket()->local_endpoint().port());
+            context_->control_socket()->local_endpoint().address().to_string(), context_->control_socket()->remote_endpoint().port());
         } else if (ec == asio::error::operation_aborted) {
           
         } else {
