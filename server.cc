@@ -1,35 +1,48 @@
 #include "server.h"
 #include "config/config.h"
 #include "session/session.h"
+#include <asio/executor_work_guard.hpp>
+#include <asio/io_context.hpp>
 #include <asio/ip/tcp.hpp>
 #include <cstdint>
 #include <memory>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <system_error>
+#include <thread>
 
 namespace orange {
 
 using asio::ip::tcp;
 
-Server::Server(asio::io_context* io_context, uint16_t port) : 
-  io_context_(io_context),
+Server::Server(uint16_t port) :
+  work_index_(0),
   port_(port),
-  acceptor_(*io_context, tcp::endpoint(tcp::v4(), port_)) {
+  acceptor_(io_context_, tcp::endpoint(tcp::v4(), port_)) {
   if (!acceptor_.is_open()) {
     throw std::logic_error("Bind port failed");
+  }
+  for (uint i = 0; i < std::thread::hardware_concurrency(); i++) {
+    works_.emplace_back(std::make_unique<Worker>());
+    works_.back()->thread = std::thread([this](){
+      auto work = asio::make_work_guard(works_.back()->io_context);
+      works_.back()->io_context.run();
+    });
   }
 }
 
 void Server::start() {
   do_accept();
+  io_context_.run();
+  spdlog::warn("Server terminated");
 }
 
 void Server::do_accept() {
-  acceptor_.async_accept([this](const std::error_code& ec, asio::ip::tcp::socket socket){
+  asio::io_context& io_context = works_[(work_index_++) % works_.size()]->io_context;
+  acceptor_.async_accept(io_context, [this, &io_context](const std::error_code& ec, asio::ip::tcp::socket socket){
     if (!ec) {
       Config::instance()->inc_client_num();
-      auto session = std::make_shared<Session>(io_context_, std::move(socket));
+      auto session = std::make_shared<Session>(&io_context, std::move(socket));
       session->start();
     } else {
       spdlog::error("Error happen: {}", ec.message());

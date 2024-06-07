@@ -43,6 +43,8 @@ enum class transport_type {
 
 using Message = std::pair<SharedConstBuffer, std::function<void(void)>>;
 
+class Session;
+
 class SessionContext {
  public:
   SessionContext();
@@ -65,8 +67,10 @@ class SessionContext {
   fs::path get_target_path(const std::string& path);
 
   void clear_data_socket() {
-    data_socket_->close();
-    data_socket_.reset();
+    if (data_socket_) {
+      data_socket_->close();
+      data_socket_.reset();
+    }
   }
 
   void set_data_socket(asio::ip::tcp::socket socket) {
@@ -93,6 +97,8 @@ class SessionContext {
   field_guard(is_anonymous, bool);
   field_guard(type, transport_type);
   field_guard(message_queue, std::queue<Message>);
+  field_guard(active_op_num, uint);
+  field_guard(session, Session*);
 
  private:
   void do_write_message();

@@ -13,6 +13,7 @@ class BasicOp : public std::enable_shared_from_this<BasicOp> {
   virtual ~BasicOp();
   virtual void do_operation() = 0;
   virtual std::string name();
+  bool is_stoped();
   void set_completion_token(std::function<void(void)> fun);
   void write_message(SharedConstBuffer buffer, std::function<void(void)> toekn = nullptr);
 

@@ -14,10 +14,12 @@
 #include <asio/error_code.hpp>
 #include <asio/io_context.hpp>
 #include <asio/steady_timer.hpp>
+#include <chrono>
 #include <memory>
 #include <spdlog/spdlog.h>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace orange {
@@ -29,13 +31,24 @@ static std::array<std::string, 12> month_mapping = {
 Session::Session(asio::io_context* io_context, asio::ip::tcp::socket socket) :
   io_context_(io_context),
   check_idle_timer_(*io_context),
-  context_(std::make_unique<SessionContext>()) {
+  context_(std::make_unique<SessionContext>()),
+  stoped_(false) {
   context_->set_control_socket(std::move(socket));
   context_->set_acceptor(io_context);
+  context_->set_session(this);
 }
 
 Session::~Session() {
   Config::instance()->dec_client_num();
+  spdlog::info("Session destroyed");
+}
+
+void Session::update_idle_timer(std::chrono::seconds seconds) {
+  check_idle_timer_.expires_after(seconds);
+}
+
+bool Session::is_stoped() {
+  return stoped_;
 }
 
 void Session::start() {
@@ -48,30 +61,27 @@ void Session::start() {
   asio::async_write(*context_->control_socket(), Response::get_code_string(ret_code::welcome, welcome_banner),
     [this, self](const std::error_code& ec, size_t n){
       if (!ec) {
+        update_idle_timer(std::chrono::seconds(Config::instance()->get_max_idle_timeout()));
         do_read();
+        start_idle_timer();
       } else {
         spdlog::error("Write error: {}", ec.message());
       }
     }
   );
-  check_idle_timer_.expires_after(std::chrono::seconds(Config::instance()->get_max_idle_timeout()));
-  // start_idle_timer();
 }
 
 void Session::start_idle_timer() {
   check_idle_timer_.async_wait([this](const std::error_code& ec){
-    if (ec == asio::error::operation_aborted) {
-      if (check_idle_timer_.expiry() > asio::steady_timer::clock_type::now()) {
-        start_idle_timer();
-      }
-    } else {
-      if (ec) {
-        spdlog::error("Timer error: {}", ec.message());
-      } else {
-        spdlog::info("Session closed by max_idle_timeout");
-        close();
-      }
+    if (is_stoped()) {
+      return;
     }
+    if (check_idle_timer_.expiry() > asio::steady_timer::clock_type::now()) {
+      start_idle_timer();
+      return;
+    }
+    spdlog::info("Session closed by max_idle_timeout");
+    close();
   });
 }
 
@@ -81,8 +91,15 @@ void Session::do_read() {
     [this, self](const std::error_code& ec, size_t n){
       if (ec) {
         if (ec == asio::error::eof) {
-          spdlog::info("Connection close by remote, ip: {}, port: {}",
-            context_->control_socket()->local_endpoint().address().to_string(), context_->control_socket()->remote_endpoint().port());
+          spdlog::info("Connection close by remote");
+          close();
+          if (context_->active_op_num()) {
+            spdlog::warn("Active operator exsits, num: {}", context_->active_op_num());
+            check_idle_timer_.expires_at(std::chrono::steady_clock::time_point::max());
+            check_idle_timer_.async_wait([self](std::error_code ec){
+              spdlog::info("All operator finished, session is about to be destroyed");
+            });
+          }
         } else if (ec == asio::error::operation_aborted) {
           
         } else {
@@ -90,7 +107,8 @@ void Session::do_read() {
         }
         return;
       }
-      check_idle_timer_.expires_after(std::chrono::seconds(Config::instance()->get_max_idle_timeout()));
+      // cancel timer
+      check_idle_timer_.expires_at(std::chrono::steady_clock::time_point::max());
       handle_read(n);
       do_read();
     }
@@ -98,6 +116,7 @@ void Session::do_read() {
 }
 
 void Session::close() {
+  stoped_ = true;
   std::error_code ignored_err;
   context_->control_socket()->close(ignored_err);
   check_idle_timer_.cancel();
@@ -132,38 +151,37 @@ void Session::handle_read(size_t n) {
   while (is >> line) {
     ret.push_back(std::move(line));
   }
-  spdlog::info("Receive data: {}", fmt::join(ret, " "));
+  spdlog::info("Receive data: {} from user: {}, remote: {}", fmt::join(ret, " "), context_->user(), context_->control_socket()->remote_endpoint().address().to_string());
   buf.consume(n);
 
   context_->mutable_request()->reset();
-  if (!build_request(ret, context_->mutable_request())) {
-    return;
+  if (!build_request(ret, context_->mutable_request()) || !dispatch_task()) {
+    update_idle_timer(std::chrono::seconds(Config::instance()->get_max_idle_timeout()));
   }
-
-  dispatch_task();
 }
 
-void Session::dispatch_task() {
+bool Session::dispatch_task() {
   const auto& request = context_->request();
   if (!context_->verified()) {
     auto op = PluginRegistry<BasicOp, SessionContext*>::create("AUTH", context_.get());
     op->do_operation();
-    return;
+    return true;
   }
   if (request.command == "USER") {
     context_->write_message(Response::get_code_string(ret_code::not_allowed, "Can't change to another user."));
-    return;
+    return false;
   }
   if (request.command == "PASS") {
     context_->write_message(Response::get_code_string(ret_code::logged_on, "Already logged in."));
-    return;
+    return false;
   }
   auto op = PluginRegistry<BasicOp, SessionContext*>::create(request.command, context_.get());
   if (!op) {
     context_->write_message(Response::get_code_string(ret_code::syntax_error));
-    return;
+    return false;
   }
   op->do_operation();
+  return true;
 }
 
 }  // namespace orange
