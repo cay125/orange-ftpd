@@ -1,6 +1,7 @@
 #include "op/ack_op.h"
 #include "op/auth_op.h"
 #include "op/basic_op.h"
+#include "op/cd_to_parent.h"
 #include "op/change_working_dir_op.h"
 #include "op/create_dir_op.h"
 #include "op/list_op.h"
@@ -35,6 +36,8 @@ void regist_all_operation() {
   REGISTER_FTPD_OP(PassiveModeOp, PASV);
   REGISTER_FTPD_OP(ListOp, LIST);
   REGISTER_FTPD_OP(SizeOp, SIZE);
+  REGISTER_FTPD_OP(CdToParentOp, CDUP);
+  REGISTER_FTPD_OP(CdToParentOp, XCUP);
 
   auto& op_map = PluginRegistry<orange::BasicOp, orange::SessionContext*>::getFinalFactoryMap();
   spdlog::info("Total registed ops: {}", op_map.size());
