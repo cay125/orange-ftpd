@@ -1,4 +1,6 @@
 #include "session/context.h"
+#include "config/config.h"
+#include "session/session.h"
 #include <asio/write.hpp>
 #include <cstdlib>
 #include <filesystem>
@@ -39,6 +41,14 @@ void SessionContext::write_message(SharedConstBuffer buffer, std::function<void(
 
 void SessionContext::do_write_message() {
   if (message_queue().empty()) {
+    if (!exists_pending_operator()) {
+      if (!session()->is_stoped()) {
+        spdlog::info("All message delivered, restart idle_timer, remote: {}:{}", control_socket()->remote_endpoint().address().to_string(), control_socket()->remote_endpoint().port());
+        session()->update_idle_timer(std::chrono::seconds(Config::instance()->get_max_idle_timeout()));
+      } else {
+        session()->cancel_idle_timer();
+      }
+    }
     return;
   }
   SharedConstBuffer buffer = message_queue().front().first;
@@ -56,6 +66,13 @@ void SessionContext::do_write_message() {
     mutable_message_queue()->pop();
     do_write_message();
   });
+}
+
+bool SessionContext::exists_pending_operator() {
+  if (active_op_num() == 0 && message_queue().empty()) {
+    return false;
+  }
+  return true;
 }
 
 }

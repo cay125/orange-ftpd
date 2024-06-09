@@ -1,6 +1,7 @@
 #include "server.h"
 #include "config/config.h"
 #include "session/session.h"
+#include <algorithm>
 #include <asio/executor_work_guard.hpp>
 #include <asio/io_context.hpp>
 #include <asio/ip/tcp.hpp>
@@ -22,13 +23,17 @@ Server::Server(uint16_t port) :
   if (!acceptor_.is_open()) {
     throw std::logic_error("Bind port failed");
   }
+  spdlog::info("Hardware_concurrency is: {}", std::thread::hardware_concurrency());
   for (uint i = 0; i < std::thread::hardware_concurrency(); i++) {
     works_.emplace_back(std::make_unique<Worker>());
-    works_.back()->thread = std::thread([this](){
-      auto work = asio::make_work_guard(works_.back()->io_context);
-      works_.back()->io_context.run();
-    });
   }
+  // start worker
+  std::for_each(works_.begin(), works_.end(), [](std::unique_ptr<Worker>& worker){
+    worker->thread = std::thread([&worker](){
+      auto work_guard = asio::make_work_guard(worker->io_context);
+      worker->io_context.run();
+    });
+  });
 }
 
 void Server::start() {

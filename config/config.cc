@@ -31,6 +31,7 @@ void Config::init(std::string path) {
   set_field(anonymous_enable);
   set_field(write_enable);
   set_field(port);
+  set_field(download_speed_limit_in_kb_per_s);
 }
 
 void Config::inc_client_num() {

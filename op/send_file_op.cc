@@ -1,9 +1,13 @@
 #include "op/send_file_op.h"
+#include "config/config.h"
 #include "op/basic_op.h"
 #include "session/code.h"
 #include "session/context.h"
+#include "session/session.h"
+#include <algorithm>
 #include <asio/error.hpp>
 #include <asio/ip/tcp.hpp>
+#include <chrono>
 #include <cstddef>
 #include <fcntl.h>
 #include <filesystem>
@@ -20,7 +24,8 @@ SendFileOp::SendFileOp(SessionContext* context) :
   BasicOp(context),
   fd_(0),
   file_size_(0),
-  file_offset_(0) {
+  file_offset_(0),
+  limiter_timer_(*context->session()->get_io_context()) {
   if (context->request().body.empty()) {
     write_message(Response::get_code_string(ret_code::noperm_filefatal, "File not found"));
     return;
@@ -61,6 +66,14 @@ void SendFileOp::do_operation() {
     context_->clear_data_socket();
   });
   fetch_passive_connection<SendFileOp>([self](){
+    std::error_code ec;
+    self->context_->data_socket()->set_option(asio::ip::tcp::no_delay(true));
+    if (ec) {
+      spdlog::error("Error when setting no_delay: {}", ec.message());
+      self->write_message(Response::get_code_string(ret_code::bad_send_net, "Failure writing network stream."));
+      self->context_->clear_data_socket();
+      return;
+    }
     self->write_message(Response::get_code_string(ret_code::data_conn), [self](){
       self->do_send_file();
     });
@@ -70,11 +83,11 @@ void SendFileOp::do_operation() {
 void SendFileOp::do_send_file() {
   auto self = shared_from_base<SendFileOp>();
   context_->data_socket()->async_wait(asio::ip::tcp::socket::wait_write, [self](std::error_code ec){
-    self->deal_event(ec);
+    self->deal_event(ec, Config::instance()->get_download_speed_limit_in_kb_per_s() * 1024 / self->time_splice);
   });
 }
 
-void SendFileOp::deal_event(std::error_code ec) {
+void SendFileOp::deal_event(std::error_code ec, size_t slice_size) {
   if (ec) {
     spdlog::error("Error occur: {}", ec.message());
     return;
@@ -83,7 +96,7 @@ void SendFileOp::deal_event(std::error_code ec) {
     spdlog::warn("Data socket is not non-blocking, setting..");
     context_->data_socket()->native_non_blocking(true);
   }
-  auto ret = ::sendfile(context_->data_socket()->native_handle(), fd_, &file_offset_, file_size_ - file_offset_);
+  auto ret = ::sendfile(context_->data_socket()->native_handle(), fd_, &file_offset_, slice_size == 0 ? (file_size_ - file_offset_) : std::min(file_size_ - file_offset_, slice_size));
   if (ret < 0) {
     std::error_code ec = asio::error_code(errno, asio::error::get_system_category());
     if (ec == asio::error::would_block || ec == asio::error::try_again) {
@@ -96,7 +109,15 @@ void SendFileOp::deal_event(std::error_code ec) {
   }
   spdlog::info("Send file: {} {} bytes, total_send: {}, left: {}", file_name_, ret, file_offset_, file_size_ - file_offset_);
   if ((file_size_ - file_offset_) > 0) {
-    do_send_file();
+    if (slice_size == 0) {
+      do_send_file();
+    } else {
+      auto self(shared_from_base<SendFileOp>());
+      limiter_timer_.expires_after(std::chrono::milliseconds(1000 / time_splice));
+      limiter_timer_.async_wait([self](std::error_code ec){
+        self->deal_event(ec, Config::instance()->get_download_speed_limit_in_kb_per_s() * 1024 / self->time_splice);
+      });
+    }
   } else {
     if (completion_token_) {
       completion_token_();

@@ -4,5 +4,6 @@
   "max_idle_timeout": 60,
   "data_connection_timeout": 1,
   "use_local_time": true,
-  "write_enable": true
+  "write_enable": true,
+  "download_speed_limit_in_kb_per_s": 100
 }

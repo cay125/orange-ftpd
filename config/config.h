@@ -35,6 +35,8 @@ class Config {
   field_ro_guard(anonymous_enable, bool, false);
   field_ro_guard(write_enable, bool, false);
   field_ro_guard(port, uint16_t, 10086);
+  field_ro_guard(download_speed_limit_in_kb_per_s, uint16_t, 0);
+  field_ro_guard(upload_speed_limit_in_kb_per_s, uint16_t, 0);
 
  private:
   Config() {}

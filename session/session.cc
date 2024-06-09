@@ -33,6 +33,7 @@ Session::Session(asio::io_context* io_context, asio::ip::tcp::socket socket) :
   check_idle_timer_(*io_context),
   context_(std::make_unique<SessionContext>()),
   stoped_(false) {
+  remote_peer_ = socket.remote_endpoint().address().to_string() + ":" + std::to_string(socket.remote_endpoint().port());
   context_->set_control_socket(std::move(socket));
   context_->set_acceptor(io_context);
   context_->set_session(this);
@@ -47,12 +48,24 @@ void Session::update_idle_timer(std::chrono::seconds seconds) {
   check_idle_timer_.expires_after(seconds);
 }
 
+void Session::cancel_idle_timer() {
+  check_idle_timer_.cancel();
+}
+
+asio::io_context* Session::get_io_context() {
+  return io_context_;
+}
+
+const std::string& Session::remote_peer() {
+  return remote_peer_;
+}
+
 bool Session::is_stoped() {
   return stoped_;
 }
 
 void Session::start() {
-  spdlog::info("Connection established, remote host: {}, port: {}", context_->control_socket()->remote_endpoint().address().to_string(), context_->control_socket()->remote_endpoint().port());
+  spdlog::info("Connection established, remote: {}", remote_peer_);
   auto self = shared_from_this();
 
   const std::string default_banner = "Welcome to ftpd.";
@@ -80,7 +93,7 @@ void Session::start_idle_timer() {
       start_idle_timer();
       return;
     }
-    spdlog::info("Session closed by max_idle_timeout");
+    spdlog::info("Session closed by max_idle_timeout, remote: {}", remote_peer_);
     close();
   });
 }
@@ -91,7 +104,7 @@ void Session::do_read() {
     [this, self](const std::error_code& ec, size_t n){
       if (ec) {
         if (ec == asio::error::eof) {
-          spdlog::info("Connection close by remote");
+          spdlog::info("Connection close by remote: {}", remote_peer_);
           close();
           if (context_->active_op_num()) {
             spdlog::warn("Active operator exsits, num: {}", context_->active_op_num());
@@ -151,12 +164,14 @@ void Session::handle_read(size_t n) {
   while (is >> line) {
     ret.push_back(std::move(line));
   }
-  spdlog::info("Receive data: {} from user: {}, remote: {}", fmt::join(ret, " "), context_->user(), context_->control_socket()->remote_endpoint().address().to_string());
+  spdlog::info("Receive data: {} from user: {}, remote: {}", fmt::join(ret, " "), context_->user(), remote_peer_);
   buf.consume(n);
 
   context_->mutable_request()->reset();
   if (!build_request(ret, context_->mutable_request()) || !dispatch_task()) {
-    update_idle_timer(std::chrono::seconds(Config::instance()->get_max_idle_timeout()));
+    if (!context_->exists_pending_operator()) {
+      update_idle_timer(std::chrono::seconds(Config::instance()->get_max_idle_timeout()));
+    }
   }
 }
 

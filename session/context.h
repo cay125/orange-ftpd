@@ -85,6 +85,8 @@ class SessionContext {
     acceptor_ = std::make_unique<asio::ip::tcp::acceptor>(*io_context);
   }
 
+  bool exists_pending_operator();
+
   void write_message(SharedConstBuffer buffer, std::function<void(void)> toekn = nullptr);
 
   field_guard(current_path, fs::path);

@@ -23,6 +23,7 @@ enum class ret_code {
   cwd_rmdir_dele_rename_ok = 250,
   pwd_or_mkdir_ok = 257,
   password_required = 331,
+  bad_send_net = 426,
   syntax_error = 500,
   bad_opts = 501,
   invalid_seq = 503,

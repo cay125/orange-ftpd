@@ -4,6 +4,7 @@
 #include "session/session.h"
 #include <algorithm>
 #include <chrono>
+#include <spdlog/spdlog.h>
 
 namespace orange {
 
@@ -13,11 +14,12 @@ BasicOp::BasicOp(SessionContext* context) : context_(context) {
 
 BasicOp::~BasicOp() {
   --(*context_->mutable_active_op_num());
-  if (context_->active_op_num() == 0) {
+  if (!context_->exists_pending_operator()) {
     if (!is_stoped()) {
+      spdlog::info("All op destroyed, eestart idle_timer, remote: {}", context_->session()->remote_peer());
       context_->session()->update_idle_timer(std::chrono::seconds(Config::instance()->get_max_idle_timeout()));
     } else {
-      context_->session()->check_idle_timer_.cancel();
+      context_->session()->cancel_idle_timer();
     }
   }
 }
